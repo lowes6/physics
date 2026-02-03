@@ -164,7 +164,6 @@
             const fileInput = document.getElementById('imageFile');
             let imageBase64 = null;
 
-            // Helper to read file if present
             if (document.getElementById('type').value === 'Image' && fileInput.files.length > 0) {
                 imageBase64 = await new Promise(resolve => {
                     const reader = new FileReader();
@@ -181,7 +180,6 @@
                 imageFile: imageBase64
             };
 
-            // SEND TO GOOGLE SHEETS
             try {
                 await fetch(API_URL, {
                     method: 'POST',
@@ -207,42 +205,34 @@
             spinner.classList.remove('hidden');
 
             try {
-                // Fetch all questions
                 const response = await fetch(API_URL);
                 const allQuestions = await response.json();
                 
-                // Run Algorithm
                 const budget = parseInt(document.getElementById('budget').value);
                 const paper = runSmartAlgorithm(allQuestions, budget);
                 
                 renderPaper(paper);
             } catch (error) {
-                alert("Failed to fetch questions. Check your URL or Sheet permissions.\n" + error);
+                alert("Failed to fetch. Check URL or Deployment.\n" + error);
             }
 
             spinner.classList.add('hidden');
         }
 
         function runSmartAlgorithm(questions, budget) {
-            // Shuffle
             let pool = questions.sort(() => 0.5 - Math.random());
-            
             let paper = [];
             let currentMarks = 0;
             let topicCounts = {}; 
 
             for (let q of pool) {
                 let qMarks = parseInt(q.marks);
-                
-                // 1. Budget Check
                 if (currentMarks + qMarks > budget) continue;
                 
-                // 2. Repetition Check (Max 40% of budget per topic)
                 let t = q.topic ? q.topic.toLowerCase() : "general";
                 let currentTopicMarks = topicCounts[t] || 0;
                 if ((currentTopicMarks + qMarks) > (budget * 0.40)) continue;
 
-                // Add to paper
                 paper.push(q);
                 currentMarks += qMarks;
                 topicCounts[t] = (topicCounts[t] || 0) + qMarks;
@@ -257,11 +247,10 @@
             container.innerHTML = "";
 
             if(questions.length === 0) {
-                container.innerHTML = "<p class='text-center text-red-500'>No questions found or budget too small.</p>";
+                container.innerHTML = "<p class='text-center text-red-500'>No questions found.</p>";
                 return;
             }
 
-            // Summary Header
             const totalMarks = questions.reduce((sum, q) => sum + parseInt(q.marks), 0);
             container.innerHTML = `
                 <div class="bg-indigo-50 border border-indigo-200 p-4 rounded flex justify-between items-center mb-6">
@@ -270,16 +259,21 @@
                 </div>
             `;
 
-            // Question Cards
             questions.forEach((q, index) => {
                 let contentHTML = "";
                 
                 if (q.type === 'Image' && q.image) {
-                    // Added referrerpolicy="no-referrer" to fix Google Drive blocking
+                    // *** 🔴 AUTO-FIX URL LOGIC ***
+                    let cleanUrl = q.image;
+                    // If it's a Drive URL, extract ID and force Thumbnail view
+                    const driveIdMatch = q.image.match(/id=([a-zA-Z0-9_-]+)/);
+                    if (driveIdMatch && driveIdMatch[1]) {
+                        cleanUrl = `https://drive.google.com/thumbnail?sz=w1200&id=${driveIdMatch[1]}`;
+                    }
+                    
                     contentHTML = `
                         <div class="mt-2">
-                            <img src="${q.image}" referrerpolicy="no-referrer" class="max-w-full h-auto border rounded shadow-sm mx-auto" alt="Question Image"/>
-                            <a href="${q.image}" target="_blank" class="block mt-1 text-xs text-indigo-400 hover:text-indigo-600 text-center">View Original Image</a>
+                            <img src="${cleanUrl}" referrerpolicy="no-referrer" class="max-w-full h-auto border rounded shadow-sm mx-auto" alt="Question Image"/>
                         </div>`;
                 } else {
                     contentHTML = `<p class="text-lg mt-2">${q.content}</p>`;
@@ -299,10 +293,8 @@
                 container.appendChild(card);
             });
 
-            // Show Print Button
             document.getElementById('print-btn').classList.remove('hidden');
 
-            // Trigger MathJax Render
             if (window.MathJax) {
                 MathJax.typesetPromise();
             }
