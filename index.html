@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physics Question Bank</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+    MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
+    };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+
+    <style>
+        body { background-color: #f3f4f6; }
+        .tab-active { border-bottom: 2px solid #4f46e5; color: #4f46e5; font-weight: bold; }
+        .tab-inactive { color: #6b7280; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="p-8 font-sans">
+
+    <div class="max-w-4xl mx-auto bg-white shadow-lg rounded-xl overflow-hidden min-h-[600px]">
+        
+        <div class="bg-indigo-600 p-6 text-white flex justify-between items-center">
+            <h1 class="text-2xl font-bold">Physics Paper Builder</h1>
+            <div id="status-indicator" class="hidden text-sm bg-indigo-800 px-3 py-1 rounded">Saving...</div>
+        </div>
+
+        <div class="flex border-b">
+            <button id="btn-tab-add" onclick="switchTab('add')" class="w-1/2 py-4 text-center tab-active hover:bg-gray-50">
+                + Add Questions
+            </button>
+            <button id="btn-tab-gen" onclick="switchTab('gen')" class="w-1/2 py-4 text-center tab-inactive hover:bg-gray-50">
+                Generate Paper
+            </button>
+        </div>
+
+        <div id="view-add" class="p-8">
+            <form id="addForm" onsubmit="submitQuestion(event)" class="space-y-6 max-w-lg mx-auto">
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Topic Tag</label>
+                        <input type="text" id="topic" required placeholder="e.g. Waves" 
+                            class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Marks</label>
+                        <input type="number" id="marks" required min="1" max="20" placeholder="1-20"
+                            class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Question Type</label>
+                    <select id="type" onchange="toggleInputType()" class="w-full border border-gray-300 rounded p-2 bg-white">
+                        <option value="Text">Typed Text / LaTeX</option>
+                        <option value="Image">Screengrab (Image)</option>
+                    </select>
+                </div>
+
+                <div id="input-text-container">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Question Content</label>
+                    <textarea id="contentText" rows="4" placeholder="Calculate the wavelength if $v = f \lambda$..." 
+                        class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
+                    <p class="text-xs text-gray-500 mt-1">Tip: Use dollar signs for math, e.g., $E=mc^2$</p>
+                </div>
+
+                <div id="input-image-container" class="hidden">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Upload Image</label>
+                    <input type="file" id="imageFile" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                </div>
+
+                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 rounded hover:bg-indigo-700 transition">
+                    Save to Bank
+                </button>
+            </form>
+        </div>
+
+        <div id="view-gen" class="hidden p-8">
+            
+            <div class="bg-gray-100 p-4 rounded-lg flex flex-wrap gap-4 items-end justify-between mb-6">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Total Marks Budget</label>
+                    <input type="number" id="budget" value="30" class="w-24 border p-2 rounded text-center font-bold">
+                </div>
+                
+                <div class="flex gap-2">
+                    <button onclick="fetchAndGenerate('random')" class="bg-green-600 text-white px-4 py-2 rounded font-bold hover:bg-green-700 shadow flex items-center gap-2">
+                        <span id="gen-spinner" class="loader hidden"></span> Auto-Generate
+                    </button>
+                </div>
+            </div>
+
+            <div id="paper-output" class="space-y-6">
+                <div class="text-center text-gray-400 py-10">
+                    Set a budget and click Auto-Generate to create a paper.
+                </div>
+            </div>
+
+            <button id="print-btn" onclick="window.print()" class="hidden w-full mt-8 bg-gray-800 text-white py-3 rounded hover:bg-gray-900">
+                Print / Save as PDF
+            </button>
+
+        </div>
+    </div>
+
+    <script>
+        // *** CONFIGURATION ***
+        const API_URL = "https://script.google.com/macros/s/AKfycbyAYuhHcn1tY9nLZ_y-v_Bm8stpdyfNkzFKJEts6PMisFO5--ZN0vKbgHjXwqSKs4Yi/exec"; 
+
+        // --- 1. UI LOGIC ---
+        function switchTab(tab) {
+            document.getElementById('view-add').classList.add('hidden');
+            document.getElementById('view-gen').classList.add('hidden');
+            document.getElementById('btn-tab-add').className = "w-1/2 py-4 text-center tab-inactive hover:bg-gray-50";
+            document.getElementById('btn-tab-gen').className = "w-1/2 py-4 text-center tab-inactive hover:bg-gray-50";
+
+            document.getElementById('view-' + tab).classList.remove('hidden');
+            document.getElementById('btn-tab-' + tab).className = "w-1/2 py-4 text-center tab-active hover:bg-gray-50";
+        }
+
+        function toggleInputType() {
+            const type = document.getElementById('type').value;
+            if(type === 'Text') {
+                document.getElementById('input-text-container').classList.remove('hidden');
+                document.getElementById('input-image-container').classList.add('hidden');
+            } else {
+                document.getElementById('input-text-container').classList.add('hidden');
+                document.getElementById('input-image-container').classList.remove('hidden');
+            }
+        }
+
+        function showStatus(msg) {
+            const el = document.getElementById('status-indicator');
+            el.innerText = msg;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 3000);
+        }
+
+        // --- 2. ADD QUESTION LOGIC ---
+        async function submitQuestion(e) {
+            e.preventDefault();
+            const btn = e.target.querySelector('button');
+            const originalText = btn.innerText;
+            btn.innerText = "Saving...";
+            btn.disabled = true;
+
+            const fileInput = document.getElementById('imageFile');
+            let imageBase64 = null;
+
+            // Helper to read file if present
+            if (document.getElementById('type').value === 'Image' && fileInput.files.length > 0) {
+                imageBase64 = await new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.readAsDataURL(fileInput.files[0]);
+                });
+            }
+
+            const payload = {
+                topic: document.getElementById('topic').value,
+                marks: document.getElementById('marks').value,
+                type: document.getElementById('type').value,
+                contentText: document.getElementById('contentText').value,
+                imageFile: imageBase64
+            };
+
+            // SEND TO GOOGLE SHEETS
+            // We use 'no-cors' mode. This means we CANNOT read the response JSON.
+            // But it prevents the browser from blocking the request.
+            try {
+                await fetch(API_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', 
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                showStatus("Saved successfully!");
+                document.getElementById('addForm').reset();
+                toggleInputType();
+            } catch (error) {
+                alert("Error saving: " + error);
+            }
+            
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+
+        // --- 3. GENERATOR LOGIC ---
+        async function fetchAndGenerate() {
+            const spinner = document.getElementById('gen-spinner');
+            spinner.classList.remove('hidden');
+
+            try {
+                // Fetch all questions
+                const response = await fetch(API_URL);
+                const allQuestions = await response.json();
+                
+                // Run Algorithm
+                const budget = parseInt(document.getElementById('budget').value);
+                const paper = runSmartAlgorithm(allQuestions, budget);
+                
+                renderPaper(paper);
+            } catch (error) {
+                alert("Failed to fetch questions. Make sure you deployed the script as 'Anyone'. \n" + error);
+            }
+
+            spinner.classList.add('hidden');
+        }
+
+        function runSmartAlgorithm(questions, budget) {
+            // Shuffle
+            let pool = questions.sort(() => 0.5 - Math.random());
+            
+            let paper = [];
+            let currentMarks = 0;
+            let topicCounts = {}; // Track marks per topic
+
+            for (let q of pool) {
+                let qMarks = parseInt(q.marks);
+                
+                // 1. Budget Check
+                if (currentMarks + qMarks > budget) continue;
+                
+                // 2. Repetition Check (Max 40% of budget per topic)
+                let t = q.topic.toLowerCase();
+                let currentTopicMarks = topicCounts[t] || 0;
+                if ((currentTopicMarks + qMarks) > (budget * 0.40)) continue;
+
+                // Add to paper
+                paper.push(q);
+                currentMarks += qMarks;
+                topicCounts[t] = (topicCounts[t] || 0) + qMarks;
+
+                if (currentMarks === budget) break;
+            }
+            return paper;
+        }
+
+        function renderPaper(questions) {
+            const container = document.getElementById('paper-output');
+            container.innerHTML = "";
+
+            if(questions.length === 0) {
+                container.innerHTML = "<p class='text-center text-red-500'>No questions found or budget too small.</p>";
+                return;
+            }
+
+            // Summary Header
+            const totalMarks = questions.reduce((sum, q) => sum + parseInt(q.marks), 0);
+            container.innerHTML = `
+                <div class="bg-indigo-50 border border-indigo-200 p-4 rounded flex justify-between items-center">
+                    <span class="font-bold text-indigo-700">Questions: ${questions.length}</span>
+                    <span class="font-bold text-indigo-700">Total Marks: ${totalMarks} / ${document.getElementById('budget').value}</span>
+                </div>
+            `;
+
+            // Question Cards
+            questions.forEach((q, index) => {
+                let contentHTML = "";
+                
+                if (q.type === 'Image' && q.image) {
+                    contentHTML = `<img src="${q.image}" class="max-w-full h-auto border rounded mt-2">`;
+                } else {
+                    contentHTML = `<p class="text-lg mt-2">${q.content}</p>`;
+                }
+
+                const card = document.createElement('div');
+                card.className = "bg-white border p-6 rounded shadow-sm hover:shadow-md transition";
+                card.innerHTML = `
+                    <div class="flex justify-between items-center mb-2 border-b pb-2">
+                        <span class="text-xs font-bold bg-gray-200 text-gray-700 px-2 py-1 rounded uppercase tracking-wide">
+                            Q${index + 1} &bull; ${q.topic}
+                        </span>
+                        <span class="font-bold text-gray-700 text-sm">[ ${q.marks} Marks ]</span>
+                    </div>
+                    <div>${contentHTML}</div>
+                `;
+                container.appendChild(card);
+            });
+
+            // Show Print Button
+            document.getElementById('print-btn').classList.remove('hidden');
+
+            // Trigger MathJax Render
+            if (window.MathJax) {
+                MathJax.typesetPromise();
+            }
+        }
+    </script>
+</body>
+</html>
