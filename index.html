@@ -9,7 +9,8 @@
     
     <script>
     MathJax = {
-      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+      svg: { fontCache: 'global' }
     };
     </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
@@ -20,18 +21,27 @@
         .tab-inactive { color: #6b7280; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* Print Styles */
+        @media print {
+            body { background-color: white; padding: 0; }
+            #header-nav, #view-gen-controls, #print-btn, #btn-tab-add, #btn-tab-gen, .tab-bar { display: none !important; }
+            .shadow-lg { box-shadow: none !important; }
+            .border { border: 1px solid #ddd !important; }
+            .bg-indigo-50 { background-color: #f0f0f0 !important; -webkit-print-color-adjust: exact; }
+        }
     </style>
 </head>
 <body class="p-8 font-sans">
 
     <div class="max-w-4xl mx-auto bg-white shadow-lg rounded-xl overflow-hidden min-h-[600px]">
         
-        <div class="bg-indigo-600 p-6 text-white flex justify-between items-center">
+        <div id="header-nav" class="bg-indigo-600 p-6 text-white flex justify-between items-center">
             <h1 class="text-2xl font-bold">Physics Paper Builder</h1>
             <div id="status-indicator" class="hidden text-sm bg-indigo-800 px-3 py-1 rounded">Saving...</div>
         </div>
 
-        <div class="flex border-b">
+        <div class="flex border-b tab-bar">
             <button id="btn-tab-add" onclick="switchTab('add')" class="w-1/2 py-4 text-center tab-active hover:bg-gray-50">
                 + Add Questions
             </button>
@@ -84,7 +94,7 @@
 
         <div id="view-gen" class="hidden p-8">
             
-            <div class="bg-gray-100 p-4 rounded-lg flex flex-wrap gap-4 items-end justify-between mb-6">
+            <div id="view-gen-controls" class="bg-gray-100 p-4 rounded-lg flex flex-wrap gap-4 items-end justify-between mb-6">
                 <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Total Marks Budget</label>
                     <input type="number" id="budget" value="30" class="w-24 border p-2 rounded text-center font-bold">
@@ -111,8 +121,8 @@
     </div>
 
     <script>
-        // *** CONFIGURATION ***
-        const API_URL = "https://script.google.com/macros/s/AKfycbyAYuhHcn1tY9nLZ_y-v_Bm8stpdyfNkzFKJEts6PMisFO5--ZN0vKbgHjXwqSKs4Yi/exec"; 
+        // *** 🔴 PASTE YOUR WEB APP URL HERE ***
+        const API_URL = "PASTE_YOUR_WEB_APP_URL_HERE"; 
 
         // --- 1. UI LOGIC ---
         function switchTab(tab) {
@@ -172,8 +182,6 @@
             };
 
             // SEND TO GOOGLE SHEETS
-            // We use 'no-cors' mode. This means we CANNOT read the response JSON.
-            // But it prevents the browser from blocking the request.
             try {
                 await fetch(API_URL, {
                     method: 'POST',
@@ -209,7 +217,7 @@
                 
                 renderPaper(paper);
             } catch (error) {
-                alert("Failed to fetch questions. Make sure you deployed the script as 'Anyone'. \n" + error);
+                alert("Failed to fetch questions. Check your URL or Sheet permissions.\n" + error);
             }
 
             spinner.classList.add('hidden');
@@ -221,7 +229,7 @@
             
             let paper = [];
             let currentMarks = 0;
-            let topicCounts = {}; // Track marks per topic
+            let topicCounts = {}; 
 
             for (let q of pool) {
                 let qMarks = parseInt(q.marks);
@@ -230,7 +238,7 @@
                 if (currentMarks + qMarks > budget) continue;
                 
                 // 2. Repetition Check (Max 40% of budget per topic)
-                let t = q.topic.toLowerCase();
+                let t = q.topic ? q.topic.toLowerCase() : "general";
                 let currentTopicMarks = topicCounts[t] || 0;
                 if ((currentTopicMarks + qMarks) > (budget * 0.40)) continue;
 
@@ -256,7 +264,7 @@
             // Summary Header
             const totalMarks = questions.reduce((sum, q) => sum + parseInt(q.marks), 0);
             container.innerHTML = `
-                <div class="bg-indigo-50 border border-indigo-200 p-4 rounded flex justify-between items-center">
+                <div class="bg-indigo-50 border border-indigo-200 p-4 rounded flex justify-between items-center mb-6">
                     <span class="font-bold text-indigo-700">Questions: ${questions.length}</span>
                     <span class="font-bold text-indigo-700">Total Marks: ${totalMarks} / ${document.getElementById('budget').value}</span>
                 </div>
@@ -267,15 +275,20 @@
                 let contentHTML = "";
                 
                 if (q.type === 'Image' && q.image) {
-                    contentHTML = `<img src="${q.image}" class="max-w-full h-auto border rounded mt-2">`;
+                    // Added referrerpolicy="no-referrer" to fix Google Drive blocking
+                    contentHTML = `
+                        <div class="mt-2">
+                            <img src="${q.image}" referrerpolicy="no-referrer" class="max-w-full h-auto border rounded shadow-sm mx-auto" alt="Question Image"/>
+                            <a href="${q.image}" target="_blank" class="block mt-1 text-xs text-indigo-400 hover:text-indigo-600 text-center">View Original Image</a>
+                        </div>`;
                 } else {
                     contentHTML = `<p class="text-lg mt-2">${q.content}</p>`;
                 }
 
                 const card = document.createElement('div');
-                card.className = "bg-white border p-6 rounded shadow-sm hover:shadow-md transition";
+                card.className = "bg-white border p-6 rounded shadow-sm hover:shadow-md transition mb-6 break-inside-avoid";
                 card.innerHTML = `
-                    <div class="flex justify-between items-center mb-2 border-b pb-2">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2">
                         <span class="text-xs font-bold bg-gray-200 text-gray-700 px-2 py-1 rounded uppercase tracking-wide">
                             Q${index + 1} &bull; ${q.topic}
                         </span>
