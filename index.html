@@ -29,6 +29,7 @@
             .shadow-lg { box-shadow: none !important; }
             .border { border: 1px solid #ddd !important; }
             .bg-indigo-50 { background-color: #f0f0f0 !important; -webkit-print-color-adjust: exact; }
+            .break-inside-avoid { page-break-inside: avoid; }
         }
     </style>
 </head>
@@ -67,23 +68,16 @@
                 </div>
 
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Question Type</label>
-                    <select id="type" onchange="toggleInputType()" class="w-full border border-gray-300 rounded p-2 bg-white">
-                        <option value="Text">Typed Text / LaTeX</option>
-                        <option value="Image">Screengrab (Image)</option>
-                    </select>
-                </div>
-
-                <div id="input-text-container">
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Question Content</label>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Question Text (Optional)</label>
                     <textarea id="contentText" rows="4" placeholder="Calculate the wavelength if $v = f \lambda$..." 
                         class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
                     <p class="text-xs text-gray-500 mt-1">Tip: Use dollar signs for math, e.g., $E=mc^2$</p>
                 </div>
 
-                <div id="input-image-container" class="hidden">
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Upload Image</label>
+                <div class="bg-gray-50 p-4 rounded border border-dashed border-gray-300">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Diagram / Image (Optional)</label>
                     <input type="file" id="imageFile" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    <p class="text-xs text-gray-400 mt-1">Attach a diagram, graph, or screengrab.</p>
                 </div>
 
                 <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 rounded hover:bg-indigo-700 transition">
@@ -135,17 +129,6 @@
             document.getElementById('btn-tab-' + tab).className = "w-1/2 py-4 text-center tab-active hover:bg-gray-50";
         }
 
-        function toggleInputType() {
-            const type = document.getElementById('type').value;
-            if(type === 'Text') {
-                document.getElementById('input-text-container').classList.remove('hidden');
-                document.getElementById('input-image-container').classList.add('hidden');
-            } else {
-                document.getElementById('input-text-container').classList.add('hidden');
-                document.getElementById('input-image-container').classList.remove('hidden');
-            }
-        }
-
         function showStatus(msg) {
             const el = document.getElementById('status-indicator');
             el.innerText = msg;
@@ -162,9 +145,20 @@
             btn.disabled = true;
 
             const fileInput = document.getElementById('imageFile');
+            const textInput = document.getElementById('contentText').value;
             let imageBase64 = null;
 
-            if (document.getElementById('type').value === 'Image' && fileInput.files.length > 0) {
+            // Determine Logic Type (Text, Image, or Hybrid)
+            let finalType = "Text";
+            const hasImage = fileInput.files.length > 0;
+            const hasText = textInput.trim().length > 0;
+
+            if (hasImage && hasText) finalType = "Hybrid";
+            else if (hasImage) finalType = "Image";
+            else finalType = "Text"; // Default
+
+            // Read Image if present
+            if (hasImage) {
                 imageBase64 = await new Promise(resolve => {
                     const reader = new FileReader();
                     reader.onloadend = () => resolve(reader.result);
@@ -175,11 +169,12 @@
             const payload = {
                 topic: document.getElementById('topic').value,
                 marks: document.getElementById('marks').value,
-                type: document.getElementById('type').value,
-                contentText: document.getElementById('contentText').value,
+                type: finalType,
+                contentText: textInput,
                 imageFile: imageBase64
             };
 
+            // SEND TO GOOGLE SHEETS
             try {
                 await fetch(API_URL, {
                     method: 'POST',
@@ -190,7 +185,6 @@
                 
                 showStatus("Saved successfully!");
                 document.getElementById('addForm').reset();
-                toggleInputType();
             } catch (error) {
                 alert("Error saving: " + error);
             }
@@ -231,7 +225,7 @@
                 
                 let t = q.topic ? q.topic.toLowerCase() : "general";
                 let currentTopicMarks = topicCounts[t] || 0;
-                if ((currentTopicMarks + qMarks) > (budget * 0.40)) continue;
+                if ((currentTopicMarks + qMarks) > (budget * 0.40)) continue; // 40% Topic Limit
 
                 paper.push(q);
                 currentMarks += qMarks;
@@ -260,23 +254,26 @@
             `;
 
             questions.forEach((q, index) => {
-                let contentHTML = "";
-                
-                if (q.type === 'Image' && q.image) {
-                    // *** 🔴 AUTO-FIX URL LOGIC ***
+                let cardHTML = "";
+
+                // 1. Render Text if present
+                if (q.content && q.content.trim() !== "") {
+                    cardHTML += `<div class="text-lg text-gray-800 mb-3">${q.content}</div>`;
+                }
+
+                // 2. Render Image if present
+                if (q.image && q.image.trim() !== "") {
+                    // Auto-fix Drive Link
                     let cleanUrl = q.image;
-                    // If it's a Drive URL, extract ID and force Thumbnail view
                     const driveIdMatch = q.image.match(/id=([a-zA-Z0-9_-]+)/);
                     if (driveIdMatch && driveIdMatch[1]) {
                         cleanUrl = `https://drive.google.com/thumbnail?sz=w1200&id=${driveIdMatch[1]}`;
                     }
                     
-                    contentHTML = `
+                    cardHTML += `
                         <div class="mt-2">
-                            <img src="${cleanUrl}" referrerpolicy="no-referrer" class="max-w-full h-auto border rounded shadow-sm mx-auto" alt="Question Image"/>
+                            <img src="${cleanUrl}" referrerpolicy="no-referrer" class="max-w-full h-auto border rounded shadow-sm mx-auto" alt="Question Diagram"/>
                         </div>`;
-                } else {
-                    contentHTML = `<p class="text-lg mt-2">${q.content}</p>`;
                 }
 
                 const card = document.createElement('div');
@@ -288,7 +285,7 @@
                         </span>
                         <span class="font-bold text-gray-700 text-sm">[ ${q.marks} Marks ]</span>
                     </div>
-                    <div>${contentHTML}</div>
+                    <div>${cardHTML}</div>
                 `;
                 container.appendChild(card);
             });
